@@ -7,7 +7,7 @@ import json
 data = None
 with open('data.json', 'r') as f:
     data = json.load(f)
-    print(data)
+    # print(data)
 
 ### Datos del problema
 # Nodos (incluyendo el deposito)
@@ -24,10 +24,10 @@ demanda = data['demanda']
 # Se puede extender el modelo para incluirlas si se desea
 
 # Capacidad de los vehiculos
-Q = 5
+Q = data['Q']
 
 # Numero de vehiculos
-K = 2
+K = data['K']
 
 
 
@@ -97,7 +97,7 @@ for k in range(K):
 ##################### Resolucion del modelo en PulP #####################
 modelo.solve()
 # Mostrar el estado de la solucion
-print("Estado de la solucion:", LpStatus[modelo.status])
+# print("Estado de la solucion:", LpStatus[modelo.status])
 # Mostrar el valor de la funcion objetivo
 print("Valor de la funcion objetivo(Costo total de las rutas):", value(modelo.objective))
 
@@ -208,14 +208,121 @@ for var in modelo_relajado.variables():
         var.lowBound = 0
         var.upBound = 1
 
-# Resolver el modelo relajado
-modelo_relajado.solve()
+# Resolver el modelo relajado(sin enteros)
+status = modelo_relajado.solve()
+
 
 # Mostrar el estado de la solucion relajada
-print("Estado de la solucion relajada:", LpStatus[modelo_relajado.status])
+# print("Estado de la solucion relajada:", LpStatus[modelo_relajado.status])
 
 # Mostrar el valor de la funcion objetivo relajada
 print("Costo total de las rutas (relajado):", value(modelo_relajado.objective))
+
+
+
+
+
+
+
+############################### Ramificacion y Acotacion ###############################
+import copy
+
+def es_entera(solucion):
+    # Comprueba si todas las variables tienen valores enteros
+    return all(abs(var - round(var)) < 1e-5 for var in solucion.values())
+
+
+# Funcion para resolver el problema relajado (sin enteros) - en este caso, podemos usar simplex
+def resolver_problema_relajado(modelo):
+    # Resolver el modelo relajado sin la restriccion de enteros
+    modelo.solve()
+    solucion = {v.name: v.varValue for v in modelo.variables()}
+    return solucion
+
+# Funcion que verifica si una solucion tiene valores fraccionarios
+def hay_fraccionarios(solucion):
+    fraccionarios = []
+    for variable, valor in solucion.items():
+        if valor is not None and valor % 1 != 0:  # Si la variable no es entera
+            fraccionarios.append((variable, valor))
+    return fraccionarios
+
+# Funcion recursiva para ramificacion y acotacion
+# Contador global de restricciones
+# contador_restricciones = 0
+
+def branch_and_bound(modelo, mejor_solucion=None, mejor_valor=None, profundidad=0, max_profundidad=10):
+    # Condición de parada por límite de profundidad
+    if profundidad > max_profundidad:
+        return mejor_solucion, mejor_valor
+
+    # Resolver problema relajado
+    solucion_relajada = resolver_problema_relajado(modelo)
+    
+    if es_entera(solucion_relajada):
+        valor_objetivo = modelo.objective.value()
+        if mejor_valor is None or valor_objetivo < mejor_valor:
+            mejor_solucion = solucion_relajada
+            mejor_valor = valor_objetivo
+        return mejor_solucion, mejor_valor
+
+    # Verificar fraccionarios
+    fraccionarios = hay_fraccionarios(solucion_relajada)
+    if not fraccionarios:
+        return mejor_solucion, mejor_valor
+    
+    # Seleccionar variable fraccionaria
+    variable_fracc, valor_fracc = fraccionarios[0]
+    piso = int(valor_fracc // 1)
+    techo = int(valor_fracc // 1 + 1)
+
+    # Crear modelos para las ramas izquierda y derecha
+    modelo_izquierda = copy.deepcopy(modelo)
+    modelo_derecha = copy.deepcopy(modelo)
+
+    # Rama izquierda (variable <= piso)
+    var_izq = modelo_izquierda.variablesDict()[variable_fracc]
+    modelo_izquierda += (var_izq <= piso, f"{variable_fracc} <= {piso}_{profundidad}")
+
+    # Rama derecha (variable >= techo)
+    var_der = modelo_derecha.variablesDict()[variable_fracc]
+    modelo_derecha += (var_der >= techo, f"{variable_fracc} >= {techo}_{profundidad}")
+
+    # Recursión en ambas ramas, incrementando la profundidad
+    mejor_solucion, mejor_valor = branch_and_bound(modelo_izquierda, mejor_solucion, mejor_valor, profundidad + 1, max_profundidad)
+    mejor_solucion, mejor_valor = branch_and_bound(modelo_derecha, mejor_solucion, mejor_valor, profundidad + 1, max_profundidad)
+
+    return mejor_solucion, mejor_valor
+
+
+
+
+# Aplicacion de ramificacion y acotacion
+
+
+if LpStatus[status] == "Optimal":
+    solucion_relajada = {v.name: v.varValue for v in modelo.variables()}
+    # Llamar a la funcion de Ramificacion y Acotacion (Adentro de esta se comprueba si hay fraccionarios en la solucion)
+
+    # mejor_solucion, mejor_valor = branch_and_bound(modelo_relajado)
+    # print(f"Mejor solucion: {mejor_solucion}")
+    # print(f"Mejor valor objetivo: {mejor_valor}")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 ##################### Metodo de las dos fases #####################
@@ -311,16 +418,47 @@ print("Nuevo costo total despues de incrementar la demanda del cliente 1:", valu
 
 ############################### Visualizacion de las rutas optimas ###############################
 import matplotlib.pyplot as plt
+import math
+import random
 
-# Coordenadas de los nodos (ejemplo)
-coordenadas = {
-    0: (0, 0),
-    1: (2, 3),
-    2: (5, 2),
-    3: (6, 6),
-    4: (8, 3),
-    5: (1, 7)
-}
+def generar_coordenadas(distancias):
+    """
+    Genera coordenadas aproximadas en base a las distancias entre nodos.
+    """
+    num_nodos = len(distancias)
+    coordenadas = {}
+    
+    # Nodo inicial en (0, 0)
+    coordenadas[0] = (0, 0)
+    
+    # Ángulo base entre nodos
+    angulo_base = 2 * math.pi / num_nodos
+    
+    for nodo in range(1, num_nodos):
+        # Distancia aproximada al nodo 0 (o cualquier nodo inicial)
+        distancia = int(distancias['0'][str(nodo)])
+        
+        # Generar un ángulo aleatorio para la distribución de los nodos
+        angulo = angulo_base * nodo + random.uniform(-0.1, 0.1)
+        
+        # Calcular las coordenadas en función de la distancia y el ángulo
+        x = int(distancia * math.cos(angulo))
+        y = int(distancia * math.sin(angulo))
+        
+        coordenadas[nodo] = (x, y)
+    
+    return coordenadas
+
+# Coordenadas de los nodos
+# coordenadas = {
+#     0: (0, 0),
+#     1: (2, 3),
+#     2: (5, 2),
+#     3: (6, 6),
+#     4: (8, 3),
+#     5: (1, 7)
+# }
+coordenadas = generar_coordenadas(distancias)
 
 # Dibujar los nodos
 plt.figure(figsize=(8,6))
@@ -347,3 +485,22 @@ plt.ylabel("Coordenada Y")
 plt.legend()
 plt.grid(True)
 plt.show()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

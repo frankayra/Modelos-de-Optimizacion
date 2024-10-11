@@ -27,10 +27,18 @@ demanda = data['demanda']
 Q = data['Q']
 
 # Numero de vehiculos
-K = data['K']
+K = min(data['K'], len(nodos) - 1)  # Asegurarse de que K no sea mayor que el número de clientes)
 
 
-
+total_demanda = sum(demanda.values())
+total_capacidad = K * Q  # Q es la capacidad de cada vehículo
+max_demanda_cliente = max(demanda.values())
+if max_demanda_cliente > Q:
+    print("Error: La demanda maxima de un cliente es mayor que la capacidad de un vehiculo.")
+    exit()
+if total_demanda > total_capacidad:
+    print("Error: La capacidad total de los vehiculos no es suficiente para cubrir la demanda.")
+    exit()
 
 ##################### Creacion del modelo en PulP #####################
 from pulp import LpProblem, LpMinimize, LpVariable, lpSum, LpBinary, LpInteger, LpStatus, value
@@ -83,18 +91,24 @@ for k in range(K):
     modelo += lpSum(demanda[str(i)] * lpSum(x[i, j, k] for j in nodos if j != i) for i in nodos if i != 0) <= Q, f"Capacidad_vehiculo_{k}"
 
 # 6. Eliminar subciclos (MTZ Constraints)
+# for k in range(K):
+#     for i in nodos:
+#         if i != 0:
+#             for j in nodos:
+#                 if j != 0 and j != i:
+#                     modelo += u[i, k] - u[j, k] + Q * x[i, j, k] <= Q - demanda[str(j)], f"Eliminacion_subciclo_{i}_{j}_vehiculo_{k}"
 for k in range(K):
     for i in nodos:
-        if i != 0:
-            for j in nodos:
-                if j != 0 and j != i:
-                    modelo += u[i, k] - u[j, k] + Q * x[i, j, k] <= Q - demanda[str(j)], f"Eliminacion_subciclo_{i}_{j}_vehiculo_{k}"
+        for j in nodos:
+            if i != j and i != 0 and j != 0:
+                modelo += u[i, k] - u[j, k] + len(nodos) * x[i, j, k] <= len(nodos) - 1
 
 
 
 
 
 ##################### Resolucion del modelo en PulP #####################
+
 modelo.solve()
 # Mostrar el estado de la solucion
 # print("Estado de la solucion:", LpStatus[modelo.status])

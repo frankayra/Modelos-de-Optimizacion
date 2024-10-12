@@ -7,7 +7,6 @@ import json
 data = None
 with open('data.json', 'r') as f:
     data = json.load(f)
-    # print(data)
 
 ### Datos del problema
 # Nodos (incluyendo el deposito)
@@ -18,10 +17,6 @@ distancias = data['distancias']
 
 # Demanda de cada cliente
 demanda = data['demanda']
-
-# Ventanas de tiempo (simplificadas)
-# Para este ejemplo, omitiremos las ventanas de tiempo o las incorporaremos en los costos
-# Se puede extender el modelo para incluirlas si se desea
 
 # Capacidad de los vehiculos
 Q = data['Q']
@@ -416,7 +411,7 @@ else:
         
         
 
-############################### Validacion y analisis de sensibilidad ###############################
+## Validacion y analisis de sensibilidad 
 # Ejemplo: Incrementar la demanda del cliente 1 en 1 unidad
 modelo.constraints["Visita_unica_1"].constant += 1
 
